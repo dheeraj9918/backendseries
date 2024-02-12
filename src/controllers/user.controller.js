@@ -3,6 +3,7 @@ import { ApiError } from "../utils/ApiError.js"
 import { User } from "../models/user.model.js";
 import { uploadCloudinary } from "../utils/Cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import jwt from "jsonwebtoken";
 
 
 const generateAccessTokenAndRefreshToken = async (userId) => {
@@ -155,7 +156,7 @@ const userLogin = asyncHandler(async (req, res) => {
                         "User logged in successfully!"
                   )
             )
-})
+});
 
 const userLogOut = asyncHandler(async (req, res) => {
       //remove the access token
@@ -184,10 +185,50 @@ const userLogOut = asyncHandler(async (req, res) => {
                         "User logOut Successfully!"
                   )
             )
+});
+
+const refreshAccessToken = asyncHandler(async (req, res) => {
+      //refresh token access from cookies and store in incomingRefreshToken
+      const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshtoken;
+      if (!incomingRefreshToken) {
+            throw new ApiError(401, "Uniauthorized request")
+      }
+
+      const decodedToken = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET);
+
+      const user = await User.findById(decodedToken?._id);
+      if (!user) {
+            throw new ApiError(401, "Invailed refresh token");
+      }
+      if (incomingRefreshToken !== user?.refreshToken) {
+           throw new ApiError(401,"Refresh token is expired or used");
+      }
+
+      const {accessToken , newRefreshToken} = await generateAccessTokenAndRefreshToken(user._id);
+
+      const options = {
+            httpOnly:true,
+            secure:true
+      }
+      
+      return res
+      .status(200)
+      .cookie("accessToken",accessToken,options)
+      .cookie("refreshToken",newRefreshToken,options)
+      .json(
+            new ApiResponse(
+                  200,
+                  {
+                        accessToken,refreshToken:newRefreshToken,
+                  },
+                  "Access token is Refresh successfully !!"
+            )
+      )
 })
 
 export {
       registerUser,
       userLogin,
-      userLogOut
+      userLogOut,
+      refreshAccessToken
 };
